@@ -1,0 +1,1493 @@
+openapi: 3.0.0
+info:
+  title: Tester Simulator API
+  version: 1.0.0
+  description: API для симулятора жизни тестировщика (управление профилями, кошельками, инвентарем, взаимодействиями).
+
+servers:
+  - url: https://temagochi.pythonanywhere.com # Ваш локальный URL
+    description: Локальный сервер разработки
+
+# --- Начало ЕДИНОГО блока components ---
+components:
+  # Определение схемы безопасности (API Key в заголовке)
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization # Используем стандартный заголовок
+
+
+  # Определение многократно используемых схем данных (моделей)
+  schemas:
+    # --- Auth Schemas ---
+    CredentialsInput:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Имя пользователя
+          example: testuser
+        password:
+          type: string
+          format: password
+          description: Пароль
+          example: password123
+      required:
+        - username
+        - password
+    UserAuthResponse:
+      type: object
+      properties:
+        user_id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: testuser
+        api_key:
+          type: string
+          example: YOUR_API_KEY_HERE
+    AuthSuccessMessage:
+       type: object
+       properties:
+         message:
+           type: string
+           example: "Login successful!"
+         user:
+           $ref: '#/components/schemas/UserAuthResponse'
+
+    # --- Tester Profile Schemas ---
+    TesterProfileInput:
+      type: object
+      properties:
+        nickname:
+          type: string
+          description: Никнейм для нового профиля (1-255 символов)
+          example: "BugHunterPro"
+    TesterProfile:
+      type: object
+      properties:
+        profile_id:
+          type: integer
+          readOnly: true
+          example: 101
+        user_id:
+          type: integer
+          readOnly: true
+          example: 1
+        owner_username:
+          type: string
+          readOnly: true
+          example: "testuser"
+        nickname:
+          type: string
+          example: "BugHunterPro"
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        last_activity_at:
+          type: string
+          format: date-time
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        energy:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+        focus:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+        stress:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+        knowledge:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+        wellbeing:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+        health:
+          type: integer
+          format: int32
+          minimum: 0
+          maximum: 100
+        bugs_found:
+          type: integer
+          format: int32
+          minimum: 0
+        current_grade:
+          type: string
+          example: "Middle"
+        status:
+          type: string
+          example: "Working"
+    TesterProfileResponse:
+      type: object
+      properties:
+        tester_profile:
+          $ref: '#/components/schemas/TesterProfile'
+    TesterProfileListResponse:
+      type: object
+      properties:
+        tester_profiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/TesterProfile'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+    NicknameInput:
+      type: object
+      properties:
+        nickname:
+          type: string
+          description: Новый никнейм (1-255 символов)
+          example: "QA_Master"
+      required:
+        - nickname
+    ProfilePatchInput:
+       type: object
+       description: Поля для частичного обновления профиля. Отправляйте только те поля, которые нужно изменить.
+       properties:
+         nickname:
+           type: string
+           example: "NinjaTester"
+         status:
+           type: string
+           example: "Resting"
+         energy: { type: integer, minimum: 0, maximum: 100 }
+         focus: { type: integer, minimum: 0, maximum: 100 }
+         stress: { type: integer, minimum: 0, maximum: 100 }
+         knowledge: { type: integer, minimum: 0, maximum: 100 }
+         wellbeing: { type: integer, minimum: 0, maximum: 100 }
+         health: { type: integer, minimum: 0, maximum: 100 }
+    ProfileActionResponse:
+      type: object
+      description: Стандартный ответ для действий с профилем. Конкретное поле ('profile' или 'tester_profile') может зависеть от эндпоинта.
+      properties:
+        message:
+          type: string
+        profile:
+          $ref: '#/components/schemas/TesterProfile'
+        tester_profile:
+          $ref: '#/components/schemas/TesterProfile'
+
+    # --- Item & Inventory Schemas ---
+    Item:
+      type: object
+      properties:
+        item_id: { type: integer, readOnly: true }
+        name: { type: string }
+        type: { type: string, example: "SNACK" }
+        description: { type: string, nullable: true }
+        effect_value: { type: integer }
+        use_limit: { type: integer }
+    TesterInventory:
+      type: object
+      properties:
+        inventory_id: { type: integer, readOnly: true }
+        profile_id: { type: integer, readOnly: true }
+        item_id: { type: integer }
+        quantity: { type: integer, minimum: 0 }
+        item_details:
+          $ref: '#/components/schemas/Item'
+    ItemListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/Item'
+    InventoryListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/TesterInventory'
+
+    # --- Wallet & Transaction Schemas ---
+    WalletInput:
+       type: object
+       properties:
+         wallet_name:
+           type: string
+           description: Название кошелька (необязательно)
+           example: "Накопления"
+    Wallet:
+      type: object
+      properties:
+        wallet_id: { type: integer, readOnly: true }
+        user_id: { type: integer, readOnly: true }
+        owner_username: { type: string, readOnly: true }
+        wallet_name: { type: string }
+        balance: { type: string, format: decimal } # Используем string для точности
+        created_at: { type: string, format: date-time, readOnly: true }
+        is_active: { type: boolean, readOnly: true }
+    WalletListResponse:
+      type: array
+      items:
+        $ref: '#/components/schemas/Wallet'
+    DepositInput:
+      type: object
+      properties:
+        amount: { type: string, format: decimal, description: "Сумма пополнения > 0" }
+        description: { type: string, nullable: true }
+      required: [amount]
+    TransferInput:
+      type: object
+      properties:
+        source_wallet_id: { type: integer, description: "ID кошелька-источника" }
+        destination_wallet_id: { type: integer, description: "ID кошелька-получателя" }
+        amount: { type: string, format: decimal, description: "Сумма перевода > 0" }
+        description: { type: string, nullable: true }
+      required: [source_wallet_id, destination_wallet_id, amount]
+    WalletTransaction:
+      type: object
+      properties:
+        transaction_id: { type: integer, readOnly: true }
+        source_wallet_id: { type: integer, nullable: true }
+        destination_wallet_id: { type: integer, nullable: true }
+        amount: { type: string, format: decimal }
+        transaction_type: { type: string, example: "TRANSFER" }
+        timestamp: { type: string, format: date-time, readOnly: true }
+        description: { type: string, nullable: true }
+        related_user_id: { type: integer, nullable: true }
+        related_username: { type: string, nullable: true, readOnly: true }
+    TransactionListResponse:
+       type: object
+       properties:
+         transactions:
+           type: array
+           items:
+             $ref: '#/components/schemas/WalletTransaction'
+         pagination:
+           $ref: '#/components/schemas/Pagination'
+
+    # --- Wishlist Schemas ---
+    WishlistItemInput:
+       type: object
+       properties:
+         item_name: { type: string, maxLength: 255 }
+         target_amount: { type: string, format: decimal, description: "Целевая сумма > 0" }
+         description: { type: string, nullable: true }
+         image_url: { type: string, format: url, nullable: true, maxLength: 500 }
+       required: [item_name, target_amount]
+    WishlistItemUpdateInput: # Для PUT
+       type: object
+       properties:
+         item_name: { type: string, maxLength: 255 }
+         target_amount: { type: string, format: decimal, description: "Целевая сумма > 0" }
+         description: { type: string, nullable: true }
+         image_url: { type: string, format: url, nullable: true, maxLength: 500 }
+         is_fulfilled: { type: boolean, description: "Можно ли вручную пометить выполненным (с ограничениями)" }
+    WishlistItem:
+      type: object
+      properties:
+        wish_id: { type: integer, readOnly: true }
+        user_id: { type: integer, readOnly: true }
+        owner_username: { type: string, readOnly: true }
+        item_name: { type: string }
+        description: { type: string, nullable: true }
+        image_url: { type: string, format: url, nullable: true }
+        target_amount: { type: string, format: decimal }
+        collected_amount: { type: string, format: decimal }
+        created_at: { type: string, format: date-time, readOnly: true }
+        is_fulfilled: { type: boolean }
+        remaining_amount: { type: string, format: decimal, readOnly: true }
+    WishlistListResponse:
+      type: object
+      properties:
+        wishlist_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WishlistItem'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        owner_username: # Для GET /users/{id}/wishlist
+          type: string
+    WishlistContributionInput:
+      type: object
+      properties:
+        source_wallet_id: { type: integer }
+        amount: { type: string, format: decimal, description: "Сумма взноса > 0" }
+        message: { type: string, nullable: true, maxLength: 500 }
+      required: [source_wallet_id, amount]
+    WishlistContribution:
+      type: object
+      properties:
+        contribution_id: { type: integer, readOnly: true }
+        wish_id: { type: integer }
+        contributor_user_id: { type: integer }
+        contributor_username: { type: string, readOnly: true }
+        amount: { type: string, format: decimal }
+        transaction_id: { type: integer, nullable: true }
+        timestamp: { type: string, format: date-time, readOnly: true }
+        message: { type: string, nullable: true }
+    ContributionListResponse:
+       type: object
+       properties:
+         contributions:
+           type: array
+           items:
+             $ref: '#/components/schemas/WishlistContribution'
+         pagination:
+           $ref: '#/components/schemas/Pagination'
+    ContributionSuccessResponse:
+       type: object
+       properties:
+         message: { type: string }
+         wishlist_item: { $ref: '#/components/schemas/WishlistItem' }
+         contribution: { $ref: '#/components/schemas/WishlistContribution' }
+
+    # --- Interaction Request Schemas ---
+    InteractionRequest:
+      type: object
+      properties:
+        request_id: { type: integer, readOnly: true }
+        sender_profile_id: { type: integer }
+        sender_nickname: { type: string, readOnly: true }
+        receiver_profile_id: { type: integer }
+        receiver_nickname: { type: string, readOnly: true }
+        request_type: { type: string, example: "MESSAGE" }
+        status: { type: string, example: "PENDING" }
+        payload: { type: object, description: "Зависит от request_type" }
+        created_at: { type: string, format: date-time, readOnly: true }
+        expires_at: { type: string, format: date-time, nullable: true, readOnly: true }
+        result: { type: object, nullable: true, description: "Результат (если есть)" }
+    InteractionListResponse:
+       type: object
+       properties:
+         notifications: # Название из кода
+           type: array
+           items:
+             $ref: '#/components/schemas/InteractionRequest'
+         count:
+           type: integer
+    InteractionResponse: # Для GET /interaction-requests/{id}
+       type: object
+       properties:
+         interaction:
+           $ref: '#/components/schemas/InteractionRequest'
+    InteractionActionResponse: # Для accept/reject/read/respond_rps
+       type: object
+       properties:
+         message: { type: string }
+         interaction:
+           $ref: '#/components/schemas/InteractionRequest'
+
+    MessageInput:
+       type: object
+       properties:
+         text: { type: string, maxLength: 1000 }
+       required: [text]
+    RpsInput:
+       type: object
+       properties:
+         choice: { type: string, enum: [ROCK, PAPER, SCISSORS] }
+       required: [choice]
+    GiftInput:
+       type: object
+       properties:
+         inventory_id: { type: integer, description: "ID слота инвентаря отправителя" }
+         quantity: { type: integer, minimum: 1, default: 1 }
+       required: [inventory_id]
+    RejectInput:
+       type: object
+       properties:
+         reason: { type: string, nullable: true }
+
+    # --- Utils ---
+    Pagination:
+      type: object
+      properties:
+        page: { type: integer }
+        per_page: { type: integer }
+        total_pages: { type: integer }
+        total_items: { type: integer }
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Тип ошибки (имя класса исключения)
+          example: BadRequest
+        message:
+          type: string
+          description: Сообщение об ошибке
+          example: "Username and password are required"
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [OK, ERROR]
+        details:
+          type: string
+          nullable: true
+
+  # Добавляем общие ответы для ошибок сюда же
+  responses:
+    BadRequestError:
+      description: Некорректный запрос (отсутствуют параметры, неверный формат данных и т.п.)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    UnauthorizedError:
+      description: Ошибка аутентификации (API ключ не предоставлен, недействителен или истек)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ForbiddenError:
+      description: Доступ запрещен (попытка выполнить действие над чужим ресурсом)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFoundError:
+      description: Ресурс не найден (пользователь, профиль, кошелек, предмет, запрос и т.п.)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    InternalServerError:
+      description: Внутренняя ошибка сервера
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+# --- КОНЕЦ БЛОКА components ---
+
+# Определение глобальной безопасности (раскомментируйте, если нужно)
+# security:
+#   - ApiKeyAuth: []
+
+# Определение путей (эндпоинтов)
+paths:
+  # --- Auth ---
+  /register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      description: Создает нового пользователя и возвращает его данные, включая API ключ.
+      operationId: registerUser
+      # security: [] # Открытый эндпоинт
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialsInput'
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessMessage'
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '409':
+          description: Пользователь с таким именем уже существует
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /login:
+    post:
+      tags: [Auth]
+      summary: Вход пользователя в систему
+      description: Аутентифицирует пользователя и возвращает его данные, включая API ключ.
+      operationId: loginUser
+      # security: [] # Открытый эндпоинт
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CredentialsInput'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSuccessMessage'
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /users/me/deactivate:
+    put:
+      tags: [Auth]
+      summary: Деактивация своего аккаунта
+      description: Помечает аккаунт текущего пользователя как неактивный и сбрасывает API ключ. Требует вызова logout на фронтенде.
+      operationId: deactivateMe
+      security:
+        - ApiKeyAuth: [] # Требует ключ
+      responses:
+        '200':
+          description: Аккаунт успешно деактивирован (или уже был неактивен)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { message: { type: string } }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+
+  # --- Tester Profiles ---
+  /tester-profiles/create:
+    post:
+      tags: [Tester Profiles]
+      summary: Создание профиля тестировщика
+      description: Создает новый профиль для текущего пользователя (если еще нет).
+      operationId: createTesterProfile
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: false # Никнейм необязателен, возьмется из username
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TesterProfileInput'
+      responses:
+        '201':
+          description: Профиль успешно создан
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/TesterProfile' # Возвращает созданный профиль
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '409':
+          description: У пользователя уже есть профиль
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /tester-profiles:
+    get:
+      tags: [Tester Profiles]
+      summary: Получение списка всех профилей тестировщиков
+      description: Возвращает пагинированный список всех профилей с возможностью поиска.
+      operationId: getAllTesterProfiles
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: search
+          in: query
+          required: false
+          description: Строка для поиска по никнейму или имени владельца
+          schema: { type: string }
+        - name: page
+          in: query
+          required: false
+          description: Номер страницы (начиная с 1)
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          required: false
+          description: Количество профилей на странице (макс. 200)
+          schema: { type: integer, default: 100 }
+      responses:
+        '200':
+          description: Список профилей
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TesterProfileListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /users/{user_id}/tester-profiles:
+    get:
+      tags: [Tester Profiles]
+      summary: Получение профилей конкретного пользователя
+      description: Возвращает профили указанного пользователя (обычно только свои).
+      operationId: getUserTesterProfiles
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          description: ID пользователя, чьи профили запрошены
+          schema: { type: integer }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Список профилей пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TesterProfileListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403':
+           description: Попытка просмотра профилей другого пользователя
+           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '404':
+           description: Пользователь не найден
+           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+
+  /tester-profiles/{profile_id}:
+    get:
+      tags: [Tester Profiles]
+      summary: Получение деталей конкретного профиля
+      operationId: getTesterProfileById
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Детали профиля
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TesterProfileResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' } # Профиль не найден
+
+    patch:
+      tags: [Tester Profiles]
+      summary: Частичное обновление своего профиля
+      description: Позволяет обновить отдельные поля своего профиля (никнейм, статус, статы).
+      operationId: patchTesterProfile
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfilePatchInput'
+      responses:
+        '200':
+          description: Профиль успешно обновлен
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/TesterProfileResponse'
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+    delete:
+      tags: [Tester Profiles]
+      summary: Удаление своего профиля
+      description: Удаляет профиль тестировщика, принадлежащий текущему пользователю.
+      operationId: deleteTesterProfile
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Профиль успешно удален (Нет содержимого)
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /tester-profiles/{profile_id}/nickname:
+    put:
+      tags: [Tester Profiles]
+      summary: Переименование своего профиля
+      operationId: renameTesterProfile
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NicknameInput'
+      responses:
+        '200':
+          description: Никнейм успешно изменен
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/TesterProfileResponse'
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  # --- Profile Actions ---
+  /tester-profiles/{profile_id}/work:
+    post:
+      tags: [Tester Profile Actions]
+      summary: Выполнить действие "Работать"
+      operationId: workAction
+      security:           # <-- ИСПРАВЛЕНО
+        - ApiKeyAuth: []  # <-- ИСПРАВЛЕНО
+      parameters:
+        - { name: profile_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Действие выполнено, возможно начисление
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileActionResponse' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /tester-profiles/{profile_id}/learn:
+    post:
+      tags: [Tester Profile Actions]
+      summary: Выполнить действие "Учиться"
+      operationId: learnAction
+      security:           # <-- ИСПРАВЛЕНО
+        - ApiKeyAuth: []  # <-- ИСПРАВЛЕНО
+      parameters:
+        - { name: profile_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Действие выполнено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileActionResponse' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /tester-profiles/{profile_id}/rest:
+    post:
+      tags: [Tester Profile Actions]
+      summary: Выполнить действие "Отдохнуть"
+      operationId: restAction
+      security:           # <-- ИСПРАВЛЕНО
+        - ApiKeyAuth: []  # <-- ИСПРАВЛЕНО
+      parameters:
+        - { name: profile_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Действие выполнено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileActionResponse' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /tester-profiles/me/report-bug:
+    post:
+      tags: [Tester Profile Actions]
+      summary: Сообщить о найденном баге
+      description: Увеличивает счетчик багов и статы текущего профиля пользователя.
+      operationId: reportBugAction
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Баг засчитан, возможно повышение грейда
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProfileActionResponse' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404':
+          description: Активный профиль не найден для пользователя
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+
+  # --- Items & Inventory ---
+  /items:
+    get:
+      tags: [Items & Inventory]
+      summary: Получить список всех доступных предметов
+      operationId: getAllItems
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Список всех предметов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /tester-profiles/me/inventory:
+    get:
+      tags: [Items & Inventory]
+      summary: Получить инвентарь текущего пользователя
+      operationId: getMyInventory
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Список предметов в инвентаре
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': # Если у пользователя нет активного профиля
+          description: Активный профиль не найден
+          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+
+  /tester-profiles/me/use_item/{inventory_id}:
+    post:
+      tags: [Items & Inventory]
+      summary: Использовать предмет из своего инвентаря
+      operationId: useInventoryItem
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: inventory_id
+          in: path
+          required: true
+          description: ID слота инвентаря для использования
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Предмет успешно использован (или ошибка инвентаря)
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/ProfileActionResponse' # Возвращает обновленный профиль
+        '400': # Если предмет нельзя использовать или тип не определен
+           description: Предмет не может быть использован
+           content:
+             application/json:
+               schema:
+                 type: object
+                 properties: { message: { type: string }, profile: { $ref: '#/components/schemas/TesterProfile' } }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка использовать чужой предмет
+        '404': { $ref: '#/components/responses/NotFoundError' } # Слот инвентаря или профиль не найден
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+
+  # --- Wallets ---
+  /users/me/wallets:
+    get:
+      tags: [Wallets]
+      summary: Получить список своих кошельков
+      operationId: getMyWallets
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Список кошельков пользователя
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/WalletListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+    post:
+      tags: [Wallets]
+      summary: Создать новый кошелек
+      operationId: createWallet
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+         required: false
+         content:
+           application/json:
+             schema:
+               $ref: '#/components/schemas/WalletInput'
+      responses:
+        '201':
+          description: Кошелек успешно создан
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/Wallet'
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /wallets/{wallet_id}:
+     get:
+       tags: [Wallets]
+       summary: Получить детали своего кошелька
+       operationId: getWalletDetails
+       security:
+         - ApiKeyAuth: []
+       parameters:
+         - name: wallet_id
+           in: path
+           required: true
+           schema: { type: integer }
+       responses:
+         '200':
+           description: Детали кошелька
+           content:
+             application/json:
+               schema:
+                  $ref: '#/components/schemas/Wallet'
+         '401': { $ref: '#/components/responses/UnauthorizedError' }
+         '403': { $ref: '#/components/responses/ForbiddenError' }
+         '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /wallets/{wallet_id}/deposit:
+    post:
+      tags: [Wallets]
+      summary: Пополнить свой кошелек (тестовый эндпоинт)
+      operationId: depositToWallet
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: wallet_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+               $ref: '#/components/schemas/DepositInput'
+      responses:
+        '200':
+          description: Кошелек успешно пополнен
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/Wallet'
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /wallets/transfer:
+    post:
+      tags: [Wallets]
+      summary: Перевести средства между кошельками
+      description: Позволяет перевести средства со своего кошелька на любой другой (свой или чужой).
+      operationId: transferFunds
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+               $ref: '#/components/schemas/TransferInput'
+      responses:
+        '200':
+          description: Перевод успешен
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  transaction: { $ref: '#/components/schemas/WalletTransaction' }
+                  source_wallet_balance: { type: string, format: decimal }
+                  destination_wallet_balance: { type: string, format: decimal }
+        '400': { $ref: '#/components/responses/BadRequestError' } # Недостаточно средств, неверные ID и т.д.
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка перевода с чужого кошелька
+        '404': { $ref: '#/components/responses/NotFoundError' } # Один из кошельков не найден
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /wallets/{wallet_id}/transactions:
+    get:
+      tags: [Wallets]
+      summary: Получить историю транзакций своего кошелька
+      operationId: getWalletTransactions
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: wallet_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Список транзакций
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/TransactionListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+
+  # --- Wishlist ---
+  /users/me/wishlist:
+    get:
+      tags: [Wishlist]
+      summary: Получить свой вишлист
+      operationId: getMyWishlist
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Список желаний
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+    post:
+      tags: [Wishlist]
+      summary: Добавить новое желание в свой вишлист
+      operationId: addWishlistItem
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WishlistItemInput'
+      responses:
+        '201':
+          description: Желание успешно добавлено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistItem'
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /users/{user_id}/wishlist:
+    get:
+      tags: [Wishlist]
+      summary: Получить вишлист другого пользователя
+      operationId: getUserWishlist
+      security:
+        - ApiKeyAuth: [] # Доступно авторизованным
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, default: 20 }
+      responses:
+        '200':
+          description: Список желаний пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WishlistListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' } # Пользователь не найден
+
+  /wishlist/{wish_id}:
+    put:
+      tags: [Wishlist]
+      summary: Редактировать свое желание
+      operationId: updateWishlistItem
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: wish_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+               $ref: '#/components/schemas/WishlistItemUpdateInput'
+      responses:
+        '200':
+          description: Желание успешно обновлено
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/WishlistItem'
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+    delete:
+      tags: [Wishlist]
+      summary: Удалить свое желание
+      operationId: deleteWishlistItem
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: wish_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '204':
+          description: Желание успешно удалено
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /wishlist/{wish_id}/contribute:
+    post:
+      tags: [Wishlist]
+      summary: Сделать взнос в желание
+      operationId: contributeToWishlist
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: wish_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+               $ref: '#/components/schemas/WishlistContributionInput'
+      responses:
+        '200':
+          description: Взнос успешно сделан
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/ContributionSuccessResponse'
+        '400': { $ref: '#/components/responses/BadRequestError' } # Недостаточно средств, желание выполнено и т.д.
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка списания с чужого кошелька
+        '404': { $ref: '#/components/responses/NotFoundError' } # Желание или кошелек не найдены
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /wishlist/{wish_id}/contributions:
+    get:
+      tags: [Wishlist]
+      summary: Получить список взносов для желания
+      operationId: getWishlistContributions
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: wish_id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, default: 1 }
+        - name: per_page
+          in: query
+          required: false
+          schema: { type: integer, default: 30 }
+      responses:
+        '200':
+          description: Список взносов
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContributionListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' } # Желание не найдено
+
+
+  # --- Interactions & Notifications ---
+  /users/me/notifications:
+    get:
+      tags: [Interactions & Notifications]
+      summary: Получить список своих ожидающих уведомлений (запросов)
+      operationId: getMyNotifications
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Список ожидающих запросов
+          content:
+            application/json:
+              schema:
+                 $ref: '#/components/schemas/InteractionListResponse'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /interaction-requests/{request_id}:
+     get:
+       tags: [Interactions & Notifications]
+       summary: Получить детали конкретного запроса на взаимодействие
+       operationId: getInteractionDetails
+       security:
+         - ApiKeyAuth: []
+       parameters:
+         - name: request_id
+           in: path
+           required: true
+           schema: { type: integer }
+       responses:
+         '200':
+           description: Детали запроса
+           content:
+             application/json:
+               schema:
+                  $ref: '#/components/schemas/InteractionResponse'
+         '401': { $ref: '#/components/responses/UnauthorizedError' }
+         '403': { $ref: '#/components/responses/ForbiddenError' } # Если запрос не касается пользователя
+         '404': { $ref: '#/components/responses/NotFoundError' }
+         '500': { $ref: '#/components/responses/InternalServerError' } # Если связанные профили удалены
+
+  /tester-profiles/{sender_profile_id}/send_message/{receiver_profile_id}:
+    post:
+      tags: [Interactions & Notifications]
+      summary: Отправить сообщение другому профилю
+      operationId: sendMessageInteraction
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - { name: sender_profile_id, in: path, required: true, schema: { type: integer } }
+        - { name: receiver_profile_id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/MessageInput' } } }
+      responses:
+        '201':
+          description: Запрос на сообщение создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InteractionRequest' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /tester-profiles/{sender_profile_id}/request_rps/{receiver_profile_id}:
+    post:
+      tags: [Interactions & Notifications]
+      summary: Отправить вызов на игру RPS другому профилю
+      operationId: requestRpsGame
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - { name: sender_profile_id, in: path, required: true, schema: { type: integer } }
+        - { name: receiver_profile_id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RpsInput' } } }
+      responses:
+        '201':
+          description: Запрос на игру создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InteractionRequest' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /tester-profiles/{sender_profile_id}/gift_item/{receiver_profile_id}:
+    post:
+      tags: [Interactions & Notifications]
+      summary: Отправить запрос на подарок предмета другому профилю
+      operationId: giftItemInteraction
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - { name: sender_profile_id, in: path, required: true, schema: { type: integer } }
+        - { name: receiver_profile_id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/GiftInput' } } }
+      responses:
+        '201':
+          description: Запрос на подарок создан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InteractionRequest' }
+        '400': { $ref: '#/components/responses/BadRequestError' } # Недостаточно предмета, неверный ID и т.д.
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка подарить не свой предмет
+        '404': { $ref: '#/components/responses/NotFoundError' } # Профили или предмет не найдены
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /interaction-requests/{request_id}/accept:
+    post:
+      tags: [Interactions & Notifications]
+      summary: Принять ожидающий запрос (сообщение, игра, подарок)
+      description: Обрабатывает принятие запроса, включая передачу подарка, если это GIFT_ITEM.
+      operationId: acceptInteraction
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - { name: request_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Запрос успешно принят/обработан
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InteractionActionResponse' }
+        '400': { $ref: '#/components/responses/BadRequestError' } # Запрос не PENDING
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка принять чужой запрос
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '409': # Конфликт при принятии подарка (предмет закончился)
+           description: Не удалось принять подарок (предмет закончился у отправителя)
+           content: { application/json: { schema: { $ref: '#/components/schemas/InteractionActionResponse' } } }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /interaction-requests/{request_id}/reject:
+    post:
+      tags: [Interactions & Notifications]
+      summary: Отклонить ожидающий запрос
+      operationId: rejectInteraction
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - { name: request_id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: false
+        content: { application/json: { schema: { $ref: '#/components/schemas/RejectInput' } } }
+      responses:
+        '200':
+          description: Запрос успешно отклонен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InteractionActionResponse' }
+        '400': { $ref: '#/components/responses/BadRequestError' } # Запрос не PENDING
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /interaction-requests/{request_id}/read:
+    post:
+      tags: [Interactions & Notifications]
+      summary: Пометить сообщение как прочитанное
+      description: Альтернатива 'accept' специально для запросов типа MESSAGE.
+      operationId: markMessageRead
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - { name: request_id, in: path, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: Сообщение помечено как прочитанное
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InteractionActionResponse' }
+        '400': { $ref: '#/components/responses/BadRequestError' } # Не сообщение или не PENDING
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /interaction-requests/{request_id}/respond_rps:
+    post:
+      tags: [Interactions & Notifications]
+      summary: Сделать ответный ход в игре RPS
+      description: Отправляется после того, как запрос на игру был принят ('ACCEPTED').
+      operationId: respondRpsGame
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - { name: request_id, in: path, required: true, schema: { type: integer } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/RpsInput' } } }
+      responses:
+        '200':
+          description: Ход сделан, игра завершена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InteractionActionResponse' } # Результат игры будет в interaction.result.outcome
+        '400': { $ref: '#/components/responses/BadRequestError' } # Не RPS игра или не ACCEPTED статус
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # Не тот игрок отвечает
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+
+  # --- Utils ---
+  /health:
+    get:
+      tags: [Utils]
+      summary: Проверка состояния сервиса
+      operationId: healthCheck
+      # security: [] # Открытый эндпоинт
+      responses:
+        '200':
+          description: Сервис работает нормально
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+        '503':
+          description: Сервис недоступен (например, проблема с БД)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthStatus' }
+
+# Добавляем теги для группировки эндпоинтов в UI
+tags:
+  - name: Auth
+    description: Операции аутентификации и управления аккаунтом
+  - name: Tester Profiles
+    description: Управление профилями тестировщиков (CRUD)
+  - name: Tester Profile Actions
+    description: Выполнение действий профилем (работать, учиться и т.д.)
+  - name: Items & Inventory
+    description: Просмотр предметов и управление инвентарем
+  - name: Wallets
+    description: Управление кошельками и транзакциями
+  - name: Wishlist
+    description: Управление списком желаний и взносами
+  - name: Interactions & Notifications
+    description: Отправка и обработка запросов (сообщения, игры, подарки), получение уведомлений
+  - name: Utils
+    description: Вспомогательные эндпоинты
