@@ -1,999 +1,563 @@
-openapi: 3.0.0
+openapi: 3.0.3
 info:
   title: Tester Simulator API
-  version: 1.0.0
-  description: API для симулятора жизни тестировщика (управление профилями, кошельками, инвентарем, взаимодействиями).
-
+  description: |-
+    API для игрового симулятора жизни тестировщика.
+    Позволяет управлять профилями тестеров, их статами, выполнять действия (работа, учеба, отдых, поиск багов),
+    управлять кошельками, инвентарем, вишлистами и взаимодействовать с другими профилями (сообщения, RPS, подарки).
+  version: 1.1.0 # Обновили версию, т.к. добавили новые фичи
+  contact: # <-- Перемещено внутрь info
+    name: Alexey Platonov
+    url: https://github.com/AlexeyPlaton/Temon
 servers:
-  - url: https://temagochi.pythonanywhere.com # Ваш локальный URL
-    description: Локальный сервер разработки
+  - url: https://temagochi.pythonanywhere.com
+    description: Production сервер
+  - url: http://127.0.0.1:5000
+    description: Локальный сервер для разработки
 
-# --- Начало ЕДИНОГО блока components ---
-components:
-  # Определение схемы безопасности (API Key в заголовке)
-  securitySchemes:
-    ApiKeyAuth:
-      type: apiKey
-      in: header
-      name: Authorization # Используем стандартный заголовок
+tags:
+  - name: Auth
+    description: Аутентификация и Регистрация пользователей
+  - name: Users
+    description: Управление аккаунтами пользователей
+  - name: Tester Profiles
+    description: Управление профилями тестировщиков и их действиями
+  - name: Items & Inventory
+    description: Справочник предметов и управление инвентарем профилей
+  - name: Wallet & Transactions
+    description: Управление кошельками и финансовыми операциями
+  - name: Wishlist
+    description: Управление списками желаний и взносами
+  - name: Interactions
+    description: Взаимодействия между профилями (Сообщения, RPS, Подарки)
+  - name: Bugs
+    description: Механика поиска и репортинга багов
+  - name: System
+    description: Системные эндпоинты (Health check)
 
-
-  # Определение многократно используемых схем данных (моделей)
-  schemas:
-    # --- Auth Schemas ---
-    CredentialsInput:
-      type: object
-      properties:
-        username:
-          type: string
-          description: Имя пользователя
-          example: testuser
-        password:
-          type: string
-          format: password
-          description: Пароль
-          example: password123
-      required:
-        - username
-        - password
-    UserAuthResponse:
-      type: object
-      properties:
-        user_id:
-          type: integer
-          example: 1
-        username:
-          type: string
-          example: testuser
-        api_key:
-          type: string
-          example: YOUR_API_KEY_HERE
-    AuthSuccessMessage:
-       type: object
-       properties:
-         message:
-           type: string
-           example: "Login successful!"
-         user:
-           $ref: '#/components/schemas/UserAuthResponse'
-
-    # --- Tester Profile Schemas ---
-    TesterProfileInput:
-      type: object
-      properties:
-        nickname:
-          type: string
-          description: Никнейм для нового профиля (1-255 символов)
-          example: "BugHunterPro"
-    TesterProfile:
-      type: object
-      properties:
-        profile_id:
-          type: integer
-          readOnly: true
-          example: 101
-        user_id:
-          type: integer
-          readOnly: true
-          example: 1
-        owner_username:
-          type: string
-          readOnly: true
-          example: "testuser"
-        nickname:
-          type: string
-          example: "BugHunterPro"
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        last_activity_at:
-          type: string
-          format: date-time
-          readOnly: true
-        is_active:
-          type: boolean
-          readOnly: true
-        energy:
-          type: integer
-          format: int32
-          minimum: 0
-          maximum: 100
-        focus:
-          type: integer
-          format: int32
-          minimum: 0
-          maximum: 100
-        stress:
-          type: integer
-          format: int32
-          minimum: 0
-          maximum: 100
-        knowledge:
-          type: integer
-          format: int32
-          minimum: 0
-          maximum: 100
-        wellbeing:
-          type: integer
-          format: int32
-          minimum: 0
-          maximum: 100
-        health:
-          type: integer
-          format: int32
-          minimum: 0
-          maximum: 100
-        bugs_found:
-          type: integer
-          format: int32
-          minimum: 0
-        current_grade:
-          type: string
-          example: "Middle"
-        status:
-          type: string
-          example: "Working"
-    TesterProfileResponse:
-      type: object
-      properties:
-        tester_profile:
-          $ref: '#/components/schemas/TesterProfile'
-    TesterProfileListResponse:
-      type: object
-      properties:
-        tester_profiles:
-          type: array
-          items:
-            $ref: '#/components/schemas/TesterProfile'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-    NicknameInput:
-      type: object
-      properties:
-        nickname:
-          type: string
-          description: Новый никнейм (1-255 символов)
-          example: "QA_Master"
-      required:
-        - nickname
-    ProfilePatchInput:
-       type: object
-       description: Поля для частичного обновления профиля. Отправляйте только те поля, которые нужно изменить.
-       properties:
-         nickname:
-           type: string
-           example: "NinjaTester"
-         status:
-           type: string
-           example: "Resting"
-         energy: { type: integer, minimum: 0, maximum: 100 }
-         focus: { type: integer, minimum: 0, maximum: 100 }
-         stress: { type: integer, minimum: 0, maximum: 100 }
-         knowledge: { type: integer, minimum: 0, maximum: 100 }
-         wellbeing: { type: integer, minimum: 0, maximum: 100 }
-         health: { type: integer, minimum: 0, maximum: 100 }
-    ProfileActionResponse:
-      type: object
-      description: Стандартный ответ для действий с профилем. Конкретное поле ('profile' или 'tester_profile') может зависеть от эндпоинта.
-      properties:
-        message:
-          type: string
-        profile:
-          $ref: '#/components/schemas/TesterProfile'
-        tester_profile:
-          $ref: '#/components/schemas/TesterProfile'
-
-    # --- Item & Inventory Schemas ---
-    Item:
-      type: object
-      properties:
-        item_id: { type: integer, readOnly: true }
-        name: { type: string }
-        type: { type: string, example: "SNACK" }
-        description: { type: string, nullable: true }
-        effect_value: { type: integer }
-        use_limit: { type: integer }
-    TesterInventory:
-      type: object
-      properties:
-        inventory_id: { type: integer, readOnly: true }
-        profile_id: { type: integer, readOnly: true }
-        item_id: { type: integer }
-        quantity: { type: integer, minimum: 0 }
-        item_details:
-          $ref: '#/components/schemas/Item'
-    ItemListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/Item'
-    InventoryListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/TesterInventory'
-
-    # --- Wallet & Transaction Schemas ---
-    WalletInput:
-       type: object
-       properties:
-         wallet_name:
-           type: string
-           description: Название кошелька (необязательно)
-           example: "Накопления"
-    Wallet:
-      type: object
-      properties:
-        wallet_id: { type: integer, readOnly: true }
-        user_id: { type: integer, readOnly: true }
-        owner_username: { type: string, readOnly: true }
-        wallet_name: { type: string }
-        balance: { type: string, format: decimal } # Используем string для точности
-        created_at: { type: string, format: date-time, readOnly: true }
-        is_active: { type: boolean, readOnly: true }
-    WalletListResponse:
-      type: array
-      items:
-        $ref: '#/components/schemas/Wallet'
-    DepositInput:
-      type: object
-      properties:
-        amount: { type: string, format: decimal, description: "Сумма пополнения > 0" }
-        description: { type: string, nullable: true }
-      required: [amount]
-    TransferInput:
-      type: object
-      properties:
-        source_wallet_id: { type: integer, description: "ID кошелька-источника" }
-        destination_wallet_id: { type: integer, description: "ID кошелька-получателя" }
-        amount: { type: string, format: decimal, description: "Сумма перевода > 0" }
-        description: { type: string, nullable: true }
-      required: [source_wallet_id, destination_wallet_id, amount]
-    WalletTransaction:
-      type: object
-      properties:
-        transaction_id: { type: integer, readOnly: true }
-        source_wallet_id: { type: integer, nullable: true }
-        destination_wallet_id: { type: integer, nullable: true }
-        amount: { type: string, format: decimal }
-        transaction_type: { type: string, example: "TRANSFER" }
-        timestamp: { type: string, format: date-time, readOnly: true }
-        description: { type: string, nullable: true }
-        related_user_id: { type: integer, nullable: true }
-        related_username: { type: string, nullable: true, readOnly: true }
-    TransactionListResponse:
-       type: object
-       properties:
-         transactions:
-           type: array
-           items:
-             $ref: '#/components/schemas/WalletTransaction'
-         pagination:
-           $ref: '#/components/schemas/Pagination'
-
-    # --- Wishlist Schemas ---
-    WishlistItemInput:
-       type: object
-       properties:
-         item_name: { type: string, maxLength: 255 }
-         target_amount: { type: string, format: decimal, description: "Целевая сумма > 0" }
-         description: { type: string, nullable: true }
-         image_url: { type: string, format: url, nullable: true, maxLength: 500 }
-       required: [item_name, target_amount]
-    WishlistItemUpdateInput: # Для PUT
-       type: object
-       properties:
-         item_name: { type: string, maxLength: 255 }
-         target_amount: { type: string, format: decimal, description: "Целевая сумма > 0" }
-         description: { type: string, nullable: true }
-         image_url: { type: string, format: url, nullable: true, maxLength: 500 }
-         is_fulfilled: { type: boolean, description: "Можно ли вручную пометить выполненным (с ограничениями)" }
-    WishlistItem:
-      type: object
-      properties:
-        wish_id: { type: integer, readOnly: true }
-        user_id: { type: integer, readOnly: true }
-        owner_username: { type: string, readOnly: true }
-        item_name: { type: string }
-        description: { type: string, nullable: true }
-        image_url: { type: string, format: url, nullable: true }
-        target_amount: { type: string, format: decimal }
-        collected_amount: { type: string, format: decimal }
-        created_at: { type: string, format: date-time, readOnly: true }
-        is_fulfilled: { type: boolean }
-        remaining_amount: { type: string, format: decimal, readOnly: true }
-    WishlistListResponse:
-      type: object
-      properties:
-        wishlist_items:
-          type: array
-          items:
-            $ref: '#/components/schemas/WishlistItem'
-        pagination:
-          $ref: '#/components/schemas/Pagination'
-        owner_username: # Для GET /users/{id}/wishlist
-          type: string
-    WishlistContributionInput:
-      type: object
-      properties:
-        source_wallet_id: { type: integer }
-        amount: { type: string, format: decimal, description: "Сумма взноса > 0" }
-        message: { type: string, nullable: true, maxLength: 500 }
-      required: [source_wallet_id, amount]
-    WishlistContribution:
-      type: object
-      properties:
-        contribution_id: { type: integer, readOnly: true }
-        wish_id: { type: integer }
-        contributor_user_id: { type: integer }
-        contributor_username: { type: string, readOnly: true }
-        amount: { type: string, format: decimal }
-        transaction_id: { type: integer, nullable: true }
-        timestamp: { type: string, format: date-time, readOnly: true }
-        message: { type: string, nullable: true }
-    ContributionListResponse:
-       type: object
-       properties:
-         contributions:
-           type: array
-           items:
-             $ref: '#/components/schemas/WishlistContribution'
-         pagination:
-           $ref: '#/components/schemas/Pagination'
-    ContributionSuccessResponse:
-       type: object
-       properties:
-         message: { type: string }
-         wishlist_item: { $ref: '#/components/schemas/WishlistItem' }
-         contribution: { $ref: '#/components/schemas/WishlistContribution' }
-
-    # --- Interaction Request Schemas ---
-    InteractionRequest:
-      type: object
-      properties:
-        request_id: { type: integer, readOnly: true }
-        sender_profile_id: { type: integer }
-        sender_nickname: { type: string, readOnly: true }
-        receiver_profile_id: { type: integer }
-        receiver_nickname: { type: string, readOnly: true }
-        request_type: { type: string, example: "MESSAGE" }
-        status: { type: string, example: "PENDING" }
-        payload: { type: object, description: "Зависит от request_type" }
-        created_at: { type: string, format: date-time, readOnly: true }
-        expires_at: { type: string, format: date-time, nullable: true, readOnly: true }
-        result: { type: object, nullable: true, description: "Результат (если есть)" }
-    InteractionListResponse:
-       type: object
-       properties:
-         notifications: # Название из кода
-           type: array
-           items:
-             $ref: '#/components/schemas/InteractionRequest'
-         count:
-           type: integer
-    InteractionResponse: # Для GET /interaction-requests/{id}
-       type: object
-       properties:
-         interaction:
-           $ref: '#/components/schemas/InteractionRequest'
-    InteractionActionResponse: # Для accept/reject/read/respond_rps
-       type: object
-       properties:
-         message: { type: string }
-         interaction:
-           $ref: '#/components/schemas/InteractionRequest'
-
-    MessageInput:
-       type: object
-       properties:
-         text: { type: string, maxLength: 1000 }
-       required: [text]
-    RpsInput:
-       type: object
-       properties:
-         choice: { type: string, enum: [ROCK, PAPER, SCISSORS] }
-       required: [choice]
-    GiftInput:
-       type: object
-       properties:
-         inventory_id: { type: integer, description: "ID слота инвентаря отправителя" }
-         quantity: { type: integer, minimum: 1, default: 1 }
-       required: [inventory_id]
-    RejectInput:
-       type: object
-       properties:
-         reason: { type: string, nullable: true }
-
-    # --- Utils ---
-    Pagination:
-      type: object
-      properties:
-        page: { type: integer }
-        per_page: { type: integer }
-        total_pages: { type: integer }
-        total_items: { type: integer }
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          type: string
-          description: Тип ошибки (имя класса исключения)
-          example: BadRequest
-        message:
-          type: string
-          description: Сообщение об ошибке
-          example: "Username and password are required"
-    HealthStatus:
-      type: object
-      properties:
-        status:
-          type: string
-          enum: [OK, ERROR]
-        details:
-          type: string
-          nullable: true
-
-  # Добавляем общие ответы для ошибок сюда же
-  responses:
-    BadRequestError:
-      description: Некорректный запрос (отсутствуют параметры, неверный формат данных и т.п.)
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    UnauthorizedError:
-      description: Ошибка аутентификации (API ключ не предоставлен, недействителен или истек)
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    ForbiddenError:
-      description: Доступ запрещен (попытка выполнить действие над чужим ресурсом)
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    NotFoundError:
-      description: Ресурс не найден (пользователь, профиль, кошелек, предмет, запрос и т.п.)
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-    InternalServerError:
-      description: Внутренняя ошибка сервера
-      content:
-        application/json:
-          schema: { $ref: '#/components/schemas/ErrorResponse' }
-
-# --- КОНЕЦ БЛОКА components ---
-
-# Определение глобальной безопасности (раскомментируйте, если нужно)
-# security:
-#   - ApiKeyAuth: []
-
-# Определение путей (эндпоинтов)
 paths:
-  # --- Auth ---
+  # ========================================
+  # Auth Endpoints
+  # ========================================
   /register:
     post:
       tags: [Auth]
       summary: Регистрация нового пользователя
-      description: Создает нового пользователя и возвращает его данные, включая API ключ.
-      operationId: registerUser
-      # security: [] # Открытый эндпоинт
+      description: Создает нового пользователя и его дефолтный кошелек.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CredentialsInput'
+              $ref: '#/components/schemas/UsernamePassword'
       responses:
         '201':
-          description: Пользователь успешно зарегистрирован
+          description: Пользователь успешно зарегистрирован.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthSuccessMessage'
-        '400': { $ref: '#/components/responses/BadRequestError' }
+                type: object
+                properties:
+                  message: { type: string, example: User registered successfully! }
+                  user: { $ref: '#/components/schemas/UserAuth' }
+        '400':
+          $ref: '#/components/responses/BadRequest' # ИСПРАВЛЕНО
         '409':
-          description: Пользователь с таким именем уже существует
-          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
-        '500': { $ref: '#/components/responses/InternalServerError' }
+          description: Конфликт (пользователь с таким именем уже существует).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '500':
+          $ref: '#/components/responses/InternalServerError' # ИСПРАВЛЕНО
 
   /login:
     post:
       tags: [Auth]
       summary: Вход пользователя в систему
-      description: Аутентифицирует пользователя и возвращает его данные, включая API ключ.
-      operationId: loginUser
-      # security: [] # Открытый эндпоинт
+      description: Проверяет учетные данные и возвращает API ключ при успехе.
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CredentialsInput'
+              $ref: '#/components/schemas/UsernamePassword'
       responses:
         '200':
-          description: Успешный вход
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthSuccessMessage'
-        '400': { $ref: '#/components/responses/BadRequestError' }
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-
-  /users/me/deactivate:
-    put:
-      tags: [Auth]
-      summary: Деактивация своего аккаунта
-      description: Помечает аккаунт текущего пользователя как неактивный и сбрасывает API ключ. Требует вызова logout на фронтенде.
-      operationId: deactivateMe
-      security:
-        - ApiKeyAuth: [] # Требует ключ
-      responses:
-        '200':
-          description: Аккаунт успешно деактивирован (или уже был неактивен)
+          description: Успешный вход.
           content:
             application/json:
               schema:
                 type: object
-                properties: { message: { type: string } }
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
+                properties:
+                  message: { type: string, example: Login successful! }
+                  user: { $ref: '#/components/schemas/UserAuth' }
+        '400':
+          $ref: '#/components/responses/BadRequest' # ИСПРАВЛЕНО
+        '401':
+          $ref: '#/components/responses/UnauthorizedError' # ИСПРАВЛЕНО
 
-
-  # --- Tester Profiles ---
-  /tester-profiles/create:
-    post:
-      tags: [Tester Profiles]
-      summary: Создание профиля тестировщика
-      description: Создает новый профиль для текущего пользователя (если еще нет).
-      operationId: createTesterProfile
+  # ========================================
+  # User Endpoints
+  # ========================================
+  /users/me/deactivate:
+    put:
+      tags: [Users]
+      summary: Деактивировать свой аккаунт
+      description: Помечает аккаунт текущего пользователя как неактивный и сбрасывает API ключ. Действие необратимо для входа.
       security:
         - ApiKeyAuth: []
-      requestBody:
-        required: false # Никнейм необязателен, возьмется из username
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TesterProfileInput'
       responses:
-        '201':
-          description: Профиль успешно создан
+        '200':
+          description: Аккаунт успешно деактивирован или уже был неактивен.
           content:
             application/json:
               schema:
-                 $ref: '#/components/schemas/TesterProfile' # Возвращает созданный профиль
-        '400': { $ref: '#/components/responses/BadRequestError' }
+                type: object
+                properties:
+                  message: { type: string, example: Account deactivated successfully. Please log out. }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /users/{target_user_id}/tester-profiles:
+    get:
+      tags: [Tester Profiles]
+      summary: Получить профили конкретного пользователя
+      description: Возвращает список профилей тестировщика, принадлежащих указанному пользователю. **В текущей реализации позволяет смотреть только свои профили.**
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: target_user_id
+          in: path
+          required: true
+          description: ID пользователя, чьи профили нужно получить.
+          schema: { type: integer }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Список профилей пользователя.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tester_profiles: { type: array, items: { $ref: '#/components/schemas/TesterProfile' } }
+                  pagination: { $ref: '#/components/schemas/PaginationInfo' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО (Пользователь не найден)
+
+  # ========================================
+  # Tester Profile Endpoints
+  # ========================================
+  /tester-profiles/create:
+    post:
+      tags: [Tester Profiles]
+      summary: Создать новый профиль тестировщика
+      description: Создает новый профиль для аутентифицированного пользователя. Обычно у пользователя один профиль, но эндпоинт оставлен.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nickname: { type: string, description: "Никнейм для нового профиля (1-255 симв.). Если не указан, используется имя пользователя.", maxLength: 255, example: "BugSlayer" }
+      responses:
+        '201':
+          description: Профиль успешно создан.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TesterProfile' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '409':
-          description: У пользователя уже есть профиль
-          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+          description: У пользователя уже есть профиль (если разрешен только один).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /tester-profiles:
     get:
       tags: [Tester Profiles]
-      summary: Получение списка всех профилей тестировщиков
-      description: Возвращает пагинированный список всех профилей с возможностью поиска.
-      operationId: getAllTesterProfiles
+      summary: Получить список всех профилей тестировщиков
+      description: Возвращает пагинированный список всех активных профилей с возможностью поиска по никнейму или имени владельца.
       security:
         - ApiKeyAuth: []
       parameters:
         - name: search
           in: query
           required: false
-          description: Строка для поиска по никнейму или имени владельца
+          description: Строка для поиска по никнейму профиля или имени пользователя-владельца.
           schema: { type: string }
-        - name: page
-          in: query
-          required: false
-          description: Номер страницы (начиная с 1)
-          schema: { type: integer, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          description: Количество профилей на странице (макс. 200)
-          schema: { type: integer, default: 100 }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
       responses:
         '200':
-          description: Список профилей
+          description: Список профилей.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TesterProfileListResponse'
+                type: object
+                properties:
+                  tester_profiles: { type: array, items: { $ref: '#/components/schemas/TesterProfile' } }
+                  pagination: { $ref: '#/components/schemas/PaginationInfo' }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-
-  /users/{user_id}/tester-profiles:
-    get:
-      tags: [Tester Profiles]
-      summary: Получение профилей конкретного пользователя
-      description: Возвращает профили указанного пользователя (обычно только свои).
-      operationId: getUserTesterProfiles
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - name: user_id
-          in: path
-          required: true
-          description: ID пользователя, чьи профили запрошены
-          schema: { type: integer }
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          schema: { type: integer, default: 20 }
-      responses:
-        '200':
-          description: Список профилей пользователя
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TesterProfileListResponse'
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403':
-           description: Попытка просмотра профилей другого пользователя
-           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
-        '404':
-           description: Пользователь не найден
-           content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
 
   /tester-profiles/{profile_id}:
     get:
       tags: [Tester Profiles]
-      summary: Получение деталей конкретного профиля
-      operationId: getTesterProfileById
+      summary: Получить информацию о конкретном профиле
+      description: Возвращает детальную информацию профиля по его ID. Доступно для просмотра чужих профилей.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: profile_id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/ProfileIdParam'
       responses:
         '200':
-          description: Детали профиля
+          description: Информация о профиле.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/TesterProfileResponse'
+                type: object
+                properties:
+                  tester_profile: { $ref: '#/components/schemas/TesterProfile' }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '404': { $ref: '#/components/responses/NotFoundError' } # Профиль не найден
-
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО
     patch:
       tags: [Tester Profiles]
-      summary: Частичное обновление своего профиля
-      description: Позволяет обновить отдельные поля своего профиля (никнейм, статус, статы).
-      operationId: patchTesterProfile
+      summary: Частично обновить свой профиль
+      description: Позволяет обновить отдельные поля своего профиля (например, статы, статус, никнейм). Доступно только владельцу.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: profile_id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/ProfileIdParam'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/ProfilePatchInput'
+              type: object
+              properties:
+                nickname: { type: string, maxLength: 255 }
+                status: { type: string, maxLength: 50 }
+                energy: { type: integer, minimum: 0, maximum: 100 }
+                focus: { type: integer, minimum: 0, maximum: 100 }
+                stress: { type: integer, minimum: 0, maximum: 100 }
+                knowledge: { type: integer, minimum: 0, maximum: 100 }
+                wellbeing: { type: integer, minimum: 0, maximum: 100 }
+                health: { type: integer, minimum: 0, maximum: 100 }
+              example:
+                status: "Ready"
+                energy: 95
       responses:
         '200':
-          description: Профиль успешно обновлен
+          description: Профиль успешно обновлен.
           content:
             application/json:
               schema:
-                 $ref: '#/components/schemas/TesterProfileResponse'
-        '400': { $ref: '#/components/responses/BadRequestError' }
+                type: object
+                properties:
+                  message: { type: string }
+                  tester_profile: { $ref: '#/components/schemas/TesterProfile' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '404': { $ref: '#/components/responses/NotFoundProfile' }
         '500': { $ref: '#/components/responses/InternalServerError' }
-
     delete:
       tags: [Tester Profiles]
-      summary: Удаление своего профиля
-      description: Удаляет профиль тестировщика, принадлежащий текущему пользователю.
-      operationId: deleteTesterProfile
+      summary: Удалить свой профиль
+      description: Удаляет профиль тестировщика. Доступно только владельцу. **Действие необратимо!**
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: profile_id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/ProfileIdParam'
       responses:
         '204':
-          description: Профиль успешно удален (Нет содержимого)
+          description: Профиль успешно удален. Нет тела ответа.
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '404': { $ref: '#/components/responses/NotFoundProfile' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /tester-profiles/{profile_id}/nickname:
     put:
       tags: [Tester Profiles]
-      summary: Переименование своего профиля
-      operationId: renameTesterProfile
+      summary: Переименовать свой профиль
+      description: Изменяет никнейм указанного профиля. Доступно только владельцу.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: profile_id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/ProfileIdParam'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/NicknameInput'
+              type: object
+              required: [nickname]
+              properties:
+                nickname: { type: string, minLength: 1, maxLength: 255, description: "Новый никнейм.", example: "CodeDetective" }
       responses:
         '200':
-          description: Никнейм успешно изменен
+          description: Никнейм успешно изменен.
           content:
             application/json:
               schema:
-                 $ref: '#/components/schemas/TesterProfileResponse'
-        '400': { $ref: '#/components/responses/BadRequestError' }
+                type: object
+                properties:
+                  message: { type: string }
+                  tester_profile: { $ref: '#/components/schemas/TesterProfile' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '404': { $ref: '#/components/responses/NotFoundProfile' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
-  # --- Profile Actions ---
+  # --- Действия профиля ---
   /tester-profiles/{profile_id}/work:
     post:
-      tags: [Tester Profile Actions]
-      summary: Выполнить действие "Работать"
-      operationId: workAction
-      security:           # <-- ИСПРАВЛЕНО
-        - ApiKeyAuth: []  # <-- ИСПРАВЛЕНО
+      tags: [Tester Profiles]
+      summary: Работать (выполнить рабочую задачу)
+      description: Симулирует выполнение работы, изменяет статы профиля и начисляет валюту на дефолтный кошелек. Доступно только владельцу профиля.
+      security:
+        - ApiKeyAuth: []
       parameters:
-        - { name: profile_id, in: path, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/ProfileIdParam'
       responses:
         '200':
-          description: Действие выполнено, возможно начисление
+          description: Работа выполнена, статы обновлены, деньги начислены.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/ProfileActionResponse' }
-        '400': { $ref: '#/components/responses/BadRequestError' }
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  tester_profile: { $ref: '#/components/schemas/TesterProfile' }
+        '400': { $ref: '#/components/responses/BadRequestAction' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
+        '404': { $ref: '#/components/responses/NotFoundProfile' }
+        '500': { $ref: '#/components/responses/InternalServerError' } # ИСПРАВЛЕНО
 
   /tester-profiles/{profile_id}/learn:
     post:
-      tags: [Tester Profile Actions]
-      summary: Выполнить действие "Учиться"
-      operationId: learnAction
-      security:           # <-- ИСПРАВЛЕНО
-        - ApiKeyAuth: []  # <-- ИСПРАВЛЕНО
+      tags: [Tester Profiles]
+      summary: Учиться
+      description: Симулирует процесс обучения, изменяет статы профиля (знания, энергия и т.д.). Доступно только владельцу профиля.
+      security:
+        - ApiKeyAuth: []
       parameters:
-        - { name: profile_id, in: path, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/ProfileIdParam'
       responses:
-        '200':
-          description: Действие выполнено
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ProfileActionResponse' }
-        '400': { $ref: '#/components/responses/BadRequestError' }
+        '200': { $ref: '#/components/responses/ActionSuccessResponse' }
+        '400': { $ref: '#/components/responses/BadRequestAction' }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '404': { $ref: '#/components/responses/NotFoundProfile' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /tester-profiles/{profile_id}/rest:
     post:
-      tags: [Tester Profile Actions]
-      summary: Выполнить действие "Отдохнуть"
-      operationId: restAction
-      security:           # <-- ИСПРАВЛЕНО
-        - ApiKeyAuth: []  # <-- ИСПРАВЛЕНО
+      tags: [Tester Profiles]
+      summary: Отдохнуть
+      description: Симулирует отдых, изменяет статы профиля (энергия, стресс и т.д.). Доступно только владельцу профиля.
+      security:
+        - ApiKeyAuth: []
       parameters:
-        - { name: profile_id, in: path, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/ProfileIdParam'
       responses:
-        '200':
-          description: Действие выполнено
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ProfileActionResponse' }
-        '400': { $ref: '#/components/responses/BadRequestError' }
+        '200': { $ref: '#/components/responses/ActionSuccessResponse' }
+        '400': { $ref: '#/components/responses/BadRequestAction' }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '404': { $ref: '#/components/responses/NotFoundProfile' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /tester-profiles/me/report-bug:
     post:
-      tags: [Tester Profile Actions]
-      summary: Сообщить о найденном баге
-      description: Увеличивает счетчик багов и статы текущего профиля пользователя.
-      operationId: reportBugAction
+      tags: [Bugs]
+      summary: Зарегистрировать найденный баг (по ID)
+      description: Позволяет текущему пользователю (его активному профилю) сообщить о находке предопределенного бага. Обновляет статы и грейд.
       security:
         - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [predefined_bug_id]
+              properties:
+                predefined_bug_id: { type: integer, description: "ID бага из списка активных (`GET /bugs/active`), который пользователь нашел." }
       responses:
         '200':
-          description: Баг засчитан, возможно повышение грейда
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/ProfileActionResponse' }
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '404':
-          description: Активный профиль не найден для пользователя
-          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
-
-  # --- Items & Inventory ---
-  /items:
-    get:
-      tags: [Items & Inventory]
-      summary: Получить список всех доступных предметов
-      operationId: getAllItems
-      security:
-        - ApiKeyAuth: []
-      responses:
-        '200':
-          description: Список всех предметов
+          description: Баг успешно принят и зарегистрирован.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ItemListResponse'
+                type: object
+                properties:
+                  message: { type: string }
+                  profile: { $ref: '#/components/schemas/TesterProfile' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО (Баг не найден или профиль)
+        '409':
+          description: Этот баг уже был найден данным профилем.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  profile: { $ref: '#/components/schemas/TesterProfile' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  # ========================================
+  # Items & Inventory Endpoints
+  # ========================================
+  /items:
+    get:
+      tags: [Items & Inventory]
+      summary: Получить справочник всех предметов
+      description: Возвращает список всех доступных для использования или покупки предметов в симуляторе.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Список всех предметов.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Item' } }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
 
   /tester-profiles/me/inventory:
     get:
       tags: [Items & Inventory]
-      summary: Получить инвентарь текущего пользователя
-      operationId: getMyInventory
+      summary: Получить инвентарь своего текущего профиля
+      description: Возвращает список предметов в инвентаре активного профиля текущего пользователя.
       security:
         - ApiKeyAuth: []
       responses:
         '200':
-          description: Список предметов в инвентаре
+          description: Список предметов в инвентаре.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/InventoryListResponse'
+              schema: { type: array, items: { $ref: '#/components/schemas/TesterInventory' } }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '404': # Если у пользователя нет активного профиля
-          description: Активный профиль не найден
-          content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } }
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО (Профиль не найден)
 
   /tester-profiles/me/use_item/{inventory_id}:
     post:
       tags: [Items & Inventory]
       summary: Использовать предмет из своего инвентаря
-      operationId: useInventoryItem
+      description: Применяет эффект предмета к текущему профилю пользователя и уменьшает его количество (если предмет расходуемый).
       security:
         - ApiKeyAuth: []
       parameters:
         - name: inventory_id
           in: path
           required: true
-          description: ID слота инвентаря для использования
+          description: ID записи в инвентаре (не ID самого предмета).
           schema: { type: integer }
       responses:
         '200':
-          description: Предмет успешно использован (или ошибка инвентаря)
+          description: Предмет успешно использован.
           content:
             application/json:
               schema:
-                 $ref: '#/components/schemas/ProfileActionResponse' # Возвращает обновленный профиль
-        '400': # Если предмет нельзя использовать или тип не определен
-           description: Предмет не может быть использован
-           content:
-             application/json:
-               schema:
-                 type: object
-                 properties: { message: { type: string }, profile: { $ref: '#/components/schemas/TesterProfile' } }
+                type: object
+                properties:
+                  message: { type: string }
+                  profile: { $ref: '#/components/schemas/TesterProfile' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка использовать чужой предмет
-        '404': { $ref: '#/components/responses/NotFoundError' } # Слот инвентаря или профиль не найден
-        '500': { $ref: '#/components/responses/InternalServerError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО (Предмет или профиль)
+        '500': { $ref: '#/components/responses/InternalServerError' } # ИСПРАВЛЕНО
 
-
-  # --- Wallets ---
+  # ========================================
+  # Wallet & Transaction Endpoints
+  # ========================================
   /users/me/wallets:
     get:
-      tags: [Wallets]
+      tags: [Wallet & Transactions]
       summary: Получить список своих кошельков
-      operationId: getMyWallets
+      description: Возвращает все активные кошельки текущего пользователя.
       security:
         - ApiKeyAuth: []
       responses:
         '200':
-          description: Список кошельков пользователя
+          description: Список кошельков.
           content:
             application/json:
-              schema:
-                 $ref: '#/components/schemas/WalletListResponse'
+              schema: { type: array, items: { $ref: '#/components/schemas/Wallet' } }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
     post:
-      tags: [Wallets]
+      tags: [Wallet & Transactions]
       summary: Создать новый кошелек
-      operationId: createWallet
+      description: Создает новый кошелек для текущего пользователя.
       security:
         - ApiKeyAuth: []
       requestBody:
-         required: false
-         content:
-           application/json:
-             schema:
-               $ref: '#/components/schemas/WalletInput'
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                wallet_name: { type: string, maxLength: 100, description: "Название нового кошелька. По умолчанию \"Новый кошелек\"." }
       responses:
         '201':
-          description: Кошелек успешно создан
+          description: Кошелек успешно создан.
           content:
             application/json:
-              schema:
-                 $ref: '#/components/schemas/Wallet'
-        '400': { $ref: '#/components/responses/BadRequestError' }
+              schema: { $ref: '#/components/schemas/Wallet' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
-  /wallets/{wallet_id}:
-     get:
-       tags: [Wallets]
-       summary: Получить детали своего кошелька
-       operationId: getWalletDetails
-       security:
-         - ApiKeyAuth: []
-       parameters:
-         - name: wallet_id
-           in: path
-           required: true
-           schema: { type: integer }
-       responses:
-         '200':
-           description: Детали кошелька
-           content:
-             application/json:
-               schema:
-                  $ref: '#/components/schemas/Wallet'
-         '401': { $ref: '#/components/responses/UnauthorizedError' }
-         '403': { $ref: '#/components/responses/ForbiddenError' }
-         '404': { $ref: '#/components/responses/NotFoundError' }
-
   /wallets/{wallet_id}/deposit:
     post:
-      tags: [Wallets]
-      summary: Пополнить свой кошелек (тестовый эндпоинт)
-      operationId: depositToWallet
+      tags: [Wallet & Transactions]
+      summary: Пополнить свой кошелек (для теста)
+      description: Добавляет указанную сумму на баланс своего кошелька. Доступно только владельцу.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: wallet_id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/WalletIdParam'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-               $ref: '#/components/schemas/DepositInput'
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: string, format: decimal, pattern: '^[0-9]+(\.[0-9]{1,2})?$', description: "Сумма пополнения (должна быть > 0).", example: "50.75" }
+                description: { type: string, maxLength: 255, description: "Описание пополнения (необязательно).", example: "Тестовое пополнение" }
       responses:
         '200':
-          description: Кошелек успешно пополнен
+          description: Кошелек успешно пополнен.
           content:
             application/json:
-              schema:
-                 $ref: '#/components/schemas/Wallet'
-        '400': { $ref: '#/components/responses/BadRequestError' }
+              schema: { $ref: '#/components/schemas/Wallet' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '404': { description: "Кошелек не найден.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } } # Оставил inline, т.к. нет общего NotFoundWallet
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /wallets/transfer:
     post:
-      tags: [Wallets]
+      tags: [Wallet & Transactions]
       summary: Перевести средства между кошельками
-      description: Позволяет перевести средства со своего кошелька на любой другой (свой или чужой).
-      operationId: transferFunds
+      description: Переводит средства с одного своего кошелька на другой кошелек (свой или чужой).
       security:
         - ApiKeyAuth: []
       requestBody:
@@ -1001,10 +565,16 @@ paths:
         content:
           application/json:
             schema:
-               $ref: '#/components/schemas/TransferInput'
+              type: object
+              required: [source_wallet_id, destination_wallet_id, amount]
+              properties:
+                source_wallet_id: { type: integer, description: "ID кошелька-отправителя (должен принадлежать текущему пользователю)." }
+                destination_wallet_id: { type: integer, description: "ID кошелька-получателя." }
+                amount: { type: string, format: decimal, pattern: '^[0-9]+(\.[0-9]{1,2})?$', description: "Сумма перевода (должна быть > 0).", example: "10.00" }
+                description: { type: string, maxLength: 255, description: "Сообщение к переводу (необязательно)." }
       responses:
         '200':
-          description: Перевод успешен
+          description: Перевод успешен.
           content:
             application/json:
               schema:
@@ -1014,73 +584,66 @@ paths:
                   transaction: { $ref: '#/components/schemas/WalletTransaction' }
                   source_wallet_balance: { type: string, format: decimal }
                   destination_wallet_balance: { type: string, format: decimal }
-        '400': { $ref: '#/components/responses/BadRequestError' } # Недостаточно средств, неверные ID и т.д.
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка перевода с чужого кошелька
-        '404': { $ref: '#/components/responses/NotFoundError' } # Один из кошельков не найден
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО (Описание поправил в компоненте)
+        '404': { description: "Один из кошельков не найден.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } } # Оставил inline
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /wallets/{wallet_id}/transactions:
     get:
-      tags: [Wallets]
-      summary: Получить историю транзакций своего кошелька
-      operationId: getWalletTransactions
+      tags: [Wallet & Transactions]
+      summary: Получить историю транзакций кошелька
+      description: Возвращает пагинированный список транзакций для указанного своего кошелька.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: wallet_id
-          in: path
-          required: true
-          schema: { type: integer }
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          schema: { type: integer, default: 20 }
+        - $ref: '#/components/parameters/WalletIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
       responses:
         '200':
-          description: Список транзакций
+          description: Список транзакций.
           content:
             application/json:
               schema:
-                 $ref: '#/components/schemas/TransactionListResponse'
+                type: object
+                properties:
+                  transactions: { type: array, items: { $ref: '#/components/schemas/WalletTransaction' } }
+                  pagination: { $ref: '#/components/schemas/PaginationInfo' }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '404': { description: "Кошелек не найден.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } } # Оставил inline
 
-
-  # --- Wishlist ---
+  # ========================================
+  # Wishlist Endpoints
+  # ========================================
   /users/me/wishlist:
     get:
       tags: [Wishlist]
-      summary: Получить свой вишлист
-      operationId: getMyWishlist
+      summary: Получить свой список желаний
+      description: Возвращает пагинированный список желаний текущего пользователя.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          schema: { type: integer, default: 20 }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
       responses:
         '200':
-          description: Список желаний
+          description: Список желаний.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WishlistListResponse'
+                type: object
+                properties:
+                  wishlist_items: { type: array, items: { $ref: '#/components/schemas/WishlistItem' } }
+                  pagination: { $ref: '#/components/schemas/PaginationInfo' }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '500': { $ref: '#/components/responses/InternalServerError' } # Добавил обработку 500, т.к. была ошибка
     post:
       tags: [Wishlist]
-      summary: Добавить новое желание в свой вишлист
-      operationId: addWishlistItem
+      summary: Добавить новое желание в свой список
+      description: Создает новое желание для текущего пользователя. Можно привязать к конкретному предмету из справочника.
       security:
         - ApiKeyAuth: []
       requestBody:
@@ -1088,406 +651,818 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WishlistItemInput'
+              type: object
+              required: [target_amount]
+              properties:
+                item_id: { type: integer, nullable: true, description: "ID предмета из справочника (`/items`), с которым связано желание (необязательно)." }
+                item_name: { type: string, maxLength: 255, description: "Название желания (обязательно, если не указан item_id)." }
+                description: { type: string, nullable: true, description: "Описание желания (необязательно)." }
+                image_url: { type: string, format: url, maxLength: 500, nullable: true, description: "URL картинки для желания (необязательно)." }
+                target_amount: { type: string, format: decimal, pattern: '^[0-9]+(\.[0-9]{1,2})?$', description: "Целевая сумма для выполнения желания (> 0).", example: "100.00" }
+              example: { item_id: 2, item_name: "Крутая книга", target_amount: "49.99", description: "Очень хочу прочитать!" }
       responses:
         '201':
-          description: Желание успешно добавлено
+          description: Желание успешно добавлено.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/WishlistItem'
-        '400': { $ref: '#/components/responses/BadRequestError' }
+              schema: { $ref: '#/components/schemas/WishlistItem' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
-  /users/{user_id}/wishlist:
+  /users/{target_user_id}/wishlist:
     get:
       tags: [Wishlist]
-      summary: Получить вишлист другого пользователя
-      operationId: getUserWishlist
+      summary: Получить список желаний другого пользователя
+      description: Возвращает публичный список желаний указанного пользователя.
       security:
-        - ApiKeyAuth: [] # Доступно авторизованным
+        - ApiKeyAuth: []
       parameters:
-        - name: user_id
+        - name: target_user_id
           in: path
           required: true
+          description: ID пользователя, чей вишлист нужно посмотреть.
           schema: { type: integer }
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          schema: { type: integer, default: 20 }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
       responses:
         '200':
-          description: Список желаний пользователя
+          description: Список желаний пользователя.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WishlistListResponse'
+                type: object
+                properties:
+                  wishlist_items: { type: array, items: { $ref: '#/components/schemas/WishlistItem' } }
+                  pagination: { $ref: '#/components/schemas/PaginationInfo' }
+                  owner_username: { type: string, description: "Имя пользователя-владельца вишлиста." }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '404': { $ref: '#/components/responses/NotFoundError' } # Пользователь не найден
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО (Пользователь не найден)
 
   /wishlist/{wish_id}:
     put:
       tags: [Wishlist]
       summary: Редактировать свое желание
-      operationId: updateWishlistItem
+      description: Позволяет изменить детали существующего желания. Доступно только владельцу.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: wish_id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/WishIdParam'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-               $ref: '#/components/schemas/WishlistItemUpdateInput'
+              type: object
+              properties:
+                item_id: { type: integer, nullable: true }
+                item_name: { type: string, maxLength: 255 }
+                description: { type: string, nullable: true }
+                image_url: { type: string, format: url, maxLength: 500, nullable: true }
+                target_amount: { type: string, format: decimal, pattern: '^[0-9]+(\.[0-9]{1,2})?$' }
+              example: { target_amount: "55.00", description: "Обновленное описание" }
       responses:
         '200':
-          description: Желание успешно обновлено
+          description: Желание успешно обновлено.
           content:
             application/json:
-              schema:
-                 $ref: '#/components/schemas/WishlistItem'
-        '400': { $ref: '#/components/responses/BadRequestError' }
+              schema: { $ref: '#/components/schemas/WishlistItem' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '404': { $ref: '#/components/responses/NotFoundWish' }
         '500': { $ref: '#/components/responses/InternalServerError' }
     delete:
       tags: [Wishlist]
       summary: Удалить свое желание
-      operationId: deleteWishlistItem
+      description: Удаляет желание из списка. Доступно только владельцу.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: wish_id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/WishIdParam'
       responses:
         '204':
-          description: Желание успешно удалено
+          description: Желание успешно удалено. Нет тела ответа.
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '404': { $ref: '#/components/responses/NotFoundWish' }
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /wishlist/{wish_id}/contribute:
     post:
       tags: [Wishlist]
       summary: Сделать взнос в желание
-      operationId: contributeToWishlist
+      description: Позволяет текущему пользователю сделать денежный взнос с одного из своих кошельков в выбранное желание (свое или чужое). Если желание выполняется, предмет (если привязан) добавляется в инвентарь владельца.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: wish_id
-          in: path
-          required: true
-          schema: { type: integer }
+        - $ref: '#/components/parameters/WishIdParam'
       requestBody:
         required: true
         content:
           application/json:
             schema:
-               $ref: '#/components/schemas/WishlistContributionInput'
+              type: object
+              required: [source_wallet_id, amount]
+              properties:
+                source_wallet_id: { type: integer, description: "ID кошелька текущего пользователя для списания средств." }
+                amount: { type: string, format: decimal, pattern: '^[0-9]+(\.[0-9]{1,2})?$', description: "Сумма взноса (> 0).", example: "5.00" }
+                message: { type: string, maxLength: 500, nullable: true, description: "Сообщение к взносу (необязательно)." }
       responses:
         '200':
-          description: Взнос успешно сделан
+          description: Взнос успешно сделан.
           content:
             application/json:
               schema:
-                 $ref: '#/components/schemas/ContributionSuccessResponse'
-        '400': { $ref: '#/components/responses/BadRequestError' } # Недостаточно средств, желание выполнено и т.д.
+                type: object
+                properties:
+                  message: { type: string }
+                  wishlist_item: { $ref: '#/components/schemas/WishlistItem' }
+                  contribution: { $ref: '#/components/schemas/WishlistContribution' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка списания с чужого кошелька
-        '404': { $ref: '#/components/responses/NotFoundError' } # Желание или кошелек не найдены
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО (Описание уточнил в компоненте)
+        '404': { $ref: '#/components/responses/NotFoundWish' } # ИСПРАВЛЕНО (или кошелек)
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /wishlist/{wish_id}/contributions:
     get:
       tags: [Wishlist]
       summary: Получить список взносов для желания
-      operationId: getWishlistContributions
+      description: Возвращает пагинированный список взносов, сделанных в конкретное желание. Доступно всем авторизованным.
       security:
         - ApiKeyAuth: []
       parameters:
-        - name: wish_id
+        - $ref: '#/components/parameters/WishIdParam'
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
+      responses:
+        '200':
+          description: Список взносов.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  contributions: { type: array, items: { $ref: '#/components/schemas/WishlistContribution' } }
+                  pagination: { $ref: '#/components/schemas/PaginationInfo' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundWish' }
+
+  # ========================================
+  # Interactions Endpoints (Чаты, RPS, Подарки)
+  # ========================================
+
+  # --- Чаты (Новые API) ---
+  /messages:
+    post:
+      tags: [Interactions]
+      summary: Отправить сообщение в чат
+      description: Отправляет текстовое сообщение от указанного профиля отправителя профилю получателя. Создает или находит существующий диалог.
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sender_profile_id, receiver_profile_id, text]
+              properties:
+                sender_profile_id: { type: integer, description: "ID профиля отправителя (должен принадлежать текущему пользователю)." }
+                receiver_profile_id: { type: integer, description: "ID профиля получателя." }
+                text: { type: string, minLength: 1, maxLength: 1000, description: "Текст сообщения." }
+      responses:
+        '201':
+          description: Сообщение успешно отправлено.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /conversations:
+    get:
+      tags: [Interactions]
+      summary: Получить список своих диалогов
+      description: Возвращает список диалогов, в которых участвует хотя бы один профиль текущего пользователя, с информацией о собеседнике, последнем сообщении и количестве непрочитанных.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Список диалогов.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Conversation' } }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /conversations/{conversation_id}/messages:
+    get:
+      tags: [Interactions]
+      summary: Получить сообщения диалога
+      description: Возвращает пагинированный список сообщений для указанного диалога. При запросе помечает диалог как прочитанный для текущего пользователя.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: conversation_id
           in: path
           required: true
+          description: ID диалога.
           schema: { type: integer }
-        - name: page
-          in: query
-          required: false
-          schema: { type: integer, default: 1 }
-        - name: per_page
-          in: query
-          required: false
-          schema: { type: integer, default: 30 }
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PerPageParam'
       responses:
         '200':
-          description: Список взносов
+          description: Список сообщений.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ContributionListResponse'
+                type: object
+                properties:
+                  messages: { type: array, items: { $ref: '#/components/schemas/Message' } }
+                  pagination: { $ref: '#/components/schemas/PaginationInfo' }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '404': { $ref: '#/components/responses/NotFoundError' } # Желание не найдено
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { description: "Диалог не найден.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } } # Оставил inline
 
-
-  # --- Interactions & Notifications ---
-  /users/me/notifications:
-    get:
-      tags: [Interactions & Notifications]
-      summary: Получить список своих ожидающих уведомлений (запросов)
-      operationId: getMyNotifications
-      security:
-        - ApiKeyAuth: []
-      responses:
-        '200':
-          description: Список ожидающих запросов
-          content:
-            application/json:
-              schema:
-                 $ref: '#/components/schemas/InteractionListResponse'
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-
-  /interaction-requests/{request_id}:
-     get:
-       tags: [Interactions & Notifications]
-       summary: Получить детали конкретного запроса на взаимодействие
-       operationId: getInteractionDetails
-       security:
-         - ApiKeyAuth: []
-       parameters:
-         - name: request_id
-           in: path
-           required: true
-           schema: { type: integer }
-       responses:
-         '200':
-           description: Детали запроса
-           content:
-             application/json:
-               schema:
-                  $ref: '#/components/schemas/InteractionResponse'
-         '401': { $ref: '#/components/responses/UnauthorizedError' }
-         '403': { $ref: '#/components/responses/ForbiddenError' } # Если запрос не касается пользователя
-         '404': { $ref: '#/components/responses/NotFoundError' }
-         '500': { $ref: '#/components/responses/InternalServerError' } # Если связанные профили удалены
-
-  /tester-profiles/{sender_profile_id}/send_message/{receiver_profile_id}:
-    post:
-      tags: [Interactions & Notifications]
-      summary: Отправить сообщение другому профилю
-      operationId: sendMessageInteraction
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - { name: sender_profile_id, in: path, required: true, schema: { type: integer } }
-        - { name: receiver_profile_id, in: path, required: true, schema: { type: integer } }
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/MessageInput' } } }
-      responses:
-        '201':
-          description: Запрос на сообщение создан
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/InteractionRequest' }
-        '400': { $ref: '#/components/responses/BadRequestError' }
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
+  # --- RPS (Камень-Ножницы-Бумага) ---
   /tester-profiles/{sender_profile_id}/request_rps/{receiver_profile_id}:
     post:
-      tags: [Interactions & Notifications]
-      summary: Отправить вызов на игру RPS другому профилю
-      operationId: requestRpsGame
+      tags: [Interactions]
+      summary: Отправить вызов на игру RPS
+      description: Инициирует игру RPS, отправляя запрос получателю с выбранным ходом отправителя.
       security:
         - ApiKeyAuth: []
       parameters:
-        - { name: sender_profile_id, in: path, required: true, schema: { type: integer } }
-        - { name: receiver_profile_id, in: path, required: true, schema: { type: integer } }
+        - name: sender_profile_id
+          in: path
+          required: true
+          description: ID профиля отправителя (должен принадлежать текущему пользователю).
+          schema: { type: integer }
+        - name: receiver_profile_id
+          in: path
+          required: true
+          description: ID профиля получателя вызова.
+          schema: { type: integer }
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/RpsInput' } } }
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [choice]
+              properties:
+                choice: { type: string, enum: [ROCK, PAPER, SCISSORS], description: "Ход отправителя." }
       responses:
         '201':
-          description: Запрос на игру создан
+          description: Запрос на игру успешно создан и отправлен.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/InteractionRequest' }
-        '400': { $ref: '#/components/responses/BadRequestError' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
-  /tester-profiles/{sender_profile_id}/gift_item/{receiver_profile_id}:
-    post:
-      tags: [Interactions & Notifications]
-      summary: Отправить запрос на подарок предмета другому профилю
-      operationId: giftItemInteraction
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - { name: sender_profile_id, in: path, required: true, schema: { type: integer } }
-        - { name: receiver_profile_id, in: path, required: true, schema: { type: integer } }
-      requestBody:
-        required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/GiftInput' } } }
-      responses:
-        '201':
-          description: Запрос на подарок создан
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/InteractionRequest' }
-        '400': { $ref: '#/components/responses/BadRequestError' } # Недостаточно предмета, неверный ID и т.д.
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка подарить не свой предмет
-        '404': { $ref: '#/components/responses/NotFoundError' } # Профили или предмет не найдены
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
-  /interaction-requests/{request_id}/accept:
-    post:
-      tags: [Interactions & Notifications]
-      summary: Принять ожидающий запрос (сообщение, игра, подарок)
-      description: Обрабатывает принятие запроса, включая передачу подарка, если это GIFT_ITEM.
-      operationId: acceptInteraction
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - { name: request_id, in: path, required: true, schema: { type: integer } }
-      responses:
-        '200':
-          description: Запрос успешно принят/обработан
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/InteractionActionResponse' }
-        '400': { $ref: '#/components/responses/BadRequestError' } # Запрос не PENDING
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' } # Попытка принять чужой запрос
-        '404': { $ref: '#/components/responses/NotFoundError' }
-        '409': # Конфликт при принятии подарка (предмет закончился)
-           description: Не удалось принять подарок (предмет закончился у отправителя)
-           content: { application/json: { schema: { $ref: '#/components/schemas/InteractionActionResponse' } } }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
-  /interaction-requests/{request_id}/reject:
-    post:
-      tags: [Interactions & Notifications]
-      summary: Отклонить ожидающий запрос
-      operationId: rejectInteraction
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - { name: request_id, in: path, required: true, schema: { type: integer } }
-      requestBody:
-        required: false
-        content: { application/json: { schema: { $ref: '#/components/schemas/RejectInput' } } }
-      responses:
-        '200':
-          description: Запрос успешно отклонен
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/InteractionActionResponse' }
-        '400': { $ref: '#/components/responses/BadRequestError' } # Запрос не PENDING
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
-        '500': { $ref: '#/components/responses/InternalServerError' }
-
-  /interaction-requests/{request_id}/read:
-    post:
-      tags: [Interactions & Notifications]
-      summary: Пометить сообщение как прочитанное
-      description: Альтернатива 'accept' специально для запросов типа MESSAGE.
-      operationId: markMessageRead
-      security:
-        - ApiKeyAuth: []
-      parameters:
-        - { name: request_id, in: path, required: true, schema: { type: integer } }
-      responses:
-        '200':
-          description: Сообщение помечено как прочитанное
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/InteractionActionResponse' }
-        '400': { $ref: '#/components/responses/BadRequestError' } # Не сообщение или не PENDING
-        '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' }
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО
         '500': { $ref: '#/components/responses/InternalServerError' }
 
   /interaction-requests/{request_id}/respond_rps:
     post:
-      tags: [Interactions & Notifications]
-      summary: Сделать ответный ход в игре RPS
-      description: Отправляется после того, как запрос на игру был принят ('ACCEPTED').
-      operationId: respondRpsGame
+      tags: [Interactions]
+      summary: Ответить на вызов RPS
+      description: Позволяет получателю вызова сделать свой ход. Завершает игру, обновляет статус запроса и создает уведомление о результате для инициатора.
       security:
         - ApiKeyAuth: []
       parameters:
-        - { name: request_id, in: path, required: true, schema: { type: integer } }
+        - $ref: '#/components/parameters/InteractionRequestIdParam'
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/RpsInput' } } }
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [choice]
+              properties:
+                choice: { type: string, enum: [ROCK, PAPER, SCISSORS], description: "Ответный ход получателя вызова." }
       responses:
         '200':
-          description: Ход сделан, игра завершена
+          description: Ход сделан, игра завершена.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/InteractionActionResponse' } # Результат игры будет в interaction.result.outcome
-        '400': { $ref: '#/components/responses/BadRequestError' } # Не RPS игра или не ACCEPTED статус
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  interaction: { $ref: '#/components/schemas/InteractionRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
         '401': { $ref: '#/components/responses/UnauthorizedError' }
-        '403': { $ref: '#/components/responses/ForbiddenError' } # Не тот игрок отвечает
-        '404': { $ref: '#/components/responses/NotFoundError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { description: "Запрос на игру не найден.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } } # Оставил inline
         '500': { $ref: '#/components/responses/InternalServerError' }
 
+  # --- Подарки ---
+  /tester-profiles/{sender_profile_id}/gift_item/{receiver_profile_id}:
+    post:
+      tags: [Interactions]
+      summary: Отправить запрос на подарок предмета
+      description: Создает запрос типа GIFT_ITEM, который получатель должен будет принять или отклонить.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: sender_profile_id
+          in: path
+          required: true
+          description: ID профиля отправителя (должен принадлежать текущему пользователю).
+          schema: { type: integer }
+        - name: receiver_profile_id
+          in: path
+          required: true
+          description: ID профиля получателя подарка.
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [inventory_id, quantity]
+              properties:
+                inventory_id: { type: integer, description: "ID записи в инвентаре отправителя, которую нужно подарить." }
+                quantity: { type: integer, minimum: 1, description: "Количество даримых предметов." }
+      responses:
+        '201':
+          description: Запрос на подарок успешно создан и отправлен.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InteractionRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО (или предмет)
+        '500': { $ref: '#/components/responses/InternalServerError' }
 
-  # --- Utils ---
-  /health:
+  # --- Управление Interaction Requests ---
+  /interaction-requests/{request_id}:
     get:
-      tags: [Utils]
-      summary: Проверка состояния сервиса
-      operationId: healthCheck
-      # security: [] # Открытый эндпоинт
+      tags: [Interactions]
+      summary: Получить детали запроса на взаимодействие
+      description: Возвращает информацию о конкретном запросе (сообщение, игра, подарок). Доступно только участникам.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/InteractionRequestIdParam'
       responses:
         '200':
-          description: Сервис работает нормально
+          description: Детали запроса.
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/HealthStatus' }
-        '503':
-          description: Сервис недоступен (например, проблема с БД)
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/HealthStatus' }
+              schema:
+                type: object
+                properties:
+                  interaction: { $ref: '#/components/schemas/InteractionRequest' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { description: "Запрос не найден.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } } # Оставил inline
+        '500': { $ref: '#/components/responses/InternalServerError' }
 
-# Добавляем теги для группировки эндпоинтов в UI
-tags:
-  - name: Auth
-    description: Операции аутентификации и управления аккаунтом
-  - name: Tester Profiles
-    description: Управление профилями тестировщиков (CRUD)
-  - name: Tester Profile Actions
-    description: Выполнение действий профилем (работать, учиться и т.д.)
-  - name: Items & Inventory
-    description: Просмотр предметов и управление инвентарем
-  - name: Wallets
-    description: Управление кошельками и транзакциями
-  - name: Wishlist
-    description: Управление списком желаний и взносами
-  - name: Interactions & Notifications
-    description: Отправка и обработка запросов (сообщения, игры, подарки), получение уведомлений
-  - name: Utils
-    description: Вспомогательные эндпоинты
+  /interaction-requests/{request_id}/accept:
+    post:
+      tags: [Interactions]
+      summary: Принять запрос на взаимодействие
+      description: Позволяет получателю принять запрос (подарок, вызов на игру). Для сообщений используйте `/read`.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/InteractionRequestIdParam'
+      responses:
+        '200':
+          description: Запрос успешно принят. Статус обновлен (ACCEPTED или COMPLETED).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  interaction: { $ref: '#/components/schemas/InteractionRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { description: "Запрос не найден.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } } # Оставил inline
+        '409':
+           description: Конфликт при принятии подарка (например, у отправителя кончился предмет).
+           content:
+             application/json:
+               schema:
+                 type: object
+                 properties:
+                   message: { type: string }
+                   interaction: { $ref: '#/components/schemas/InteractionRequest' }
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /interaction-requests/{request_id}/reject:
+    post:
+      tags: [Interactions]
+      summary: Отклонить запрос на взаимодействие
+      description: Позволяет получателю отклонить запрос (подарок, вызов на игру, сообщение).
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/InteractionRequestIdParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, description: "Причина отклонения (необязательно)." }
+      responses:
+        '200':
+          description: Запрос успешно отклонен.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  interaction: { $ref: '#/components/schemas/InteractionRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { description: "Запрос не найден.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } } # Оставил inline
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /interaction-requests/{request_id}/read:
+    post:
+      tags: [Interactions]
+      summary: Пометить уведомление/сообщение как прочитанное
+      description: Используется для закрытия уведомлений типа MESSAGE или RPS_RESULT, меняя их статус на COMPLETED.
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - $ref: '#/components/parameters/InteractionRequestIdParam'
+      responses:
+        '200':
+          description: Уведомление помечено как прочитанное.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  interaction: { $ref: '#/components/schemas/InteractionRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' } # ИСПРАВЛЕНО
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' } # ИСПРАВЛЕНО
+        '404': { description: "Запрос не найден.", content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } } } # Оставил inline
+        '500': { $ref: '#/components/responses/InternalServerError' }
+
+  /users/me/notifications:
+    get:
+      tags: [Interactions]
+      summary: Получить список своих активных уведомлений
+      description: Возвращает список непрочитанных/необработанных запросов (InteractionRequest), адресованных профилям текущего пользователя (статус PENDING).
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Список уведомлений.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count: { type: integer, description: "Количество уведомлений." }
+                  notifications: { type: array, items: { $ref: '#/components/schemas/InteractionRequest' } }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  # ========================================
+  # Bug Hunting Endpoints
+  # ========================================
+  /bugs/active:
+    get:
+      tags: [Bugs]
+      summary: Получить список активных багов для поиска
+      description: Возвращает список предопределенных багов, которые доступны для "нахождения" в текущем задании.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Список активных багов (краткая информация).
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/PredefinedBugSummary' } }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /tester-profiles/me/bug-progress:
+    get:
+      tags: [Bugs]
+      summary: Получить прогресс поиска багов для своего профиля
+      description: Возвращает количество найденных багов и общее количество активных багов для текущего профиля.
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Прогресс поиска багов.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  profile_id: { type: integer }
+                  found_count: { type: integer }
+                  total_active_count: { type: integer }
+                  progress_percent: { type: integer, format: int32 }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundProfile' } # ИСПРАВЛЕНО
+
+  # ========================================
+  # System Endpoints
+  # ========================================
+  /health:
+    get:
+      tags: [System]
+      summary: Проверка работоспособности сервиса
+      description: Возвращает статус OK, если сервис и база данных доступны.
+      responses:
+        '200':
+          description: Сервис работает.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "OK" }
+        '503':
+          description: Сервис недоступен (например, проблема с БД).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ERROR" }
+                  details: { type: string, example: "Database connection failed" }
+
+# ========================================
+# Components (Reusable definitions)
+# ========================================
+components:
+  schemas:
+    # --- Basic Types ---
+    UsernamePassword:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 80 }
+        password: { type: string, minLength: 6 }
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string, description: "Тип ошибки (имя класса исключения)" }
+        message: { type: string, description: "Описание ошибки" }
+    PaginationInfo:
+      type: object
+      properties:
+        page: { type: integer, description: "Текущая страница" }
+        per_page: { type: integer, description: "Элементов на странице" }
+        total_pages: { type: integer, description: "Всего страниц" }
+        total_items: { type: integer, description: "Всего элементов" }
+
+    # --- Main Models ---
+    UserPublic:
+      type: object
+      properties:
+        user_id: { type: integer }
+        username: { type: string }
+    UserAuth:
+      allOf: [{$ref: '#/components/schemas/UserPublic'}]
+      type: object
+      properties:
+        api_key: { type: string, description: "Ключ API для аутентифицированных запросов" }
+    TesterProfile:
+      type: object
+      properties:
+        profile_id: { type: integer }
+        user_id: { type: integer }
+        owner_username: { type: string, nullable: true, description: "Имя пользователя-владельца" }
+        nickname: { type: string, maxLength: 255 }
+        created_at: { type: string, format: date-time, nullable: true }
+        last_activity_at: { type: string, format: date-time, nullable: true }
+        is_active: { type: boolean }
+        energy: { type: integer, minimum: 0, maximum: 100 }
+        focus: { type: integer, minimum: 0, maximum: 100 }
+        stress: { type: integer, minimum: 0, maximum: 100 }
+        knowledge: { type: integer, minimum: 0, maximum: 100 }
+        wellbeing: { type: integer, minimum: 0, maximum: 100 }
+        health: { type: integer, minimum: 0, maximum: 100 }
+        bugs_found: { type: integer, minimum: 0, description: "Общее количество очков за найденные баги (или кол-во)" }
+        current_grade: { type: string, description: "Текущий грейд (Intern, Junior, etc.)" }
+        status: { type: string, maxLength: 50, description: "Текущий статус (Ready, Working, etc.)" }
+    Item:
+      type: object
+      properties:
+        item_id: { type: integer }
+        name: { type: string, maxLength: 100 }
+        type: { type: string, maxLength: 50, description: "Тип предмета (SNACK, BOOK, TOOL, GIFT, MEDICINE, COURSE, etc.)" }
+        description: { type: string, maxLength: 255, nullable: true }
+        effect_value: { type: integer, description: "Значение эффекта (например, +10 к энергии)" }
+        use_limit: { type: integer, description: "Лимит использований (1 - одноразовый, 0 - многоразовый)" }
+    TesterInventory:
+      type: object
+      properties:
+        inventory_id: { type: integer }
+        profile_id: { type: integer }
+        item_id: { type: integer }
+        quantity: { type: integer, minimum: 1 }
+        item_details: { $ref: '#/components/schemas/Item', nullable: true }
+    Wallet:
+      type: object
+      properties:
+        wallet_id: { type: integer }
+        user_id: { type: integer }
+        owner_username: { type: string, nullable: true }
+        wallet_name: { type: string, maxLength: 100 }
+        balance: { type: string, format: decimal, description: "Текущий баланс (строка для точности)" }
+        created_at: { type: string, format: date-time, nullable: true }
+        is_active: { type: boolean }
+    WalletTransaction:
+      type: object
+      properties:
+        transaction_id: { type: integer }
+        source_wallet_id: { type: integer, nullable: true }
+        destination_wallet_id: { type: integer, nullable: true }
+        amount: { type: string, format: decimal }
+        transaction_type: { type: string, maxLength: 50, description: "Тип (DEPOSIT, TRANSFER, EARNING, CONTRIBUTION)" }
+        timestamp: { type: string, format: date-time, nullable: true }
+        description: { type: string, maxLength: 255, nullable: true }
+        related_user_id: { type: integer, nullable: true, description: "ID связанного пользователя (например, получателя перевода/взноса)" }
+        related_username: { type: string, nullable: true, description: "Имя связанного пользователя" }
+    WishlistItem:
+      type: object
+      properties:
+        wish_id: { type: integer }
+        user_id: { type: integer }
+        owner_username: { type: string, nullable: true }
+        item_id: { type: integer, nullable: true, description: "ID связанного предмета (если есть)" }
+        item_name: { type: string, maxLength: 255, description: "Название желания (или предмета)" }
+        description: { type: string, nullable: true }
+        image_url: { type: string, format: url, nullable: true }
+        target_amount: { type: string, format: decimal }
+        collected_amount: { type: string, format: decimal }
+        remaining_amount: { type: string, format: decimal, description: "Сколько осталось собрать" }
+        created_at: { type: string, format: date-time, nullable: true }
+        is_fulfilled: { type: boolean }
+    WishlistContribution:
+      type: object
+      properties:
+        contribution_id: { type: integer }
+        wish_id: { type: integer }
+        contributor_user_id: { type: integer }
+        contributor_username: { type: string, nullable: true }
+        amount: { type: string, format: decimal }
+        transaction_id: { type: integer, nullable: true }
+        timestamp: { type: string, format: date-time, nullable: true }
+        message: { type: string, maxLength: 500, nullable: true }
+    InteractionRequest:
+      type: object
+      properties:
+        request_id: { type: integer }
+        sender_profile_id: { type: integer }
+        sender_nickname: { type: string, nullable: true }
+        receiver_profile_id: { type: integer }
+        receiver_nickname: { type: string, nullable: true }
+        request_type: { type: string, enum: [MESSAGE, PLAY_RPS, GIFT_ITEM, RPS_RESULT], description: "Тип запроса" }
+        status: { type: string, enum: [PENDING, ACCEPTED, REJECTED, COMPLETED, CANCELED], description: "Статус запроса" }
+        payload: { type: object, nullable: true, description: "Дополнительные данные (текст сообщения, ходы RPS, ID подарка)" }
+        created_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+        result: { type: object, nullable: true, description: "Результат взаимодействия (исход RPS, причина отклонения)" }
+    Conversation:
+      type: object
+      properties:
+        conversation_id: { type: integer }
+        opponent_profile_id: { type: integer }
+        opponent_nickname: { type: string, nullable: true }
+        last_message_at: { type: string, format: date-time, nullable: true }
+        last_message_preview: { type: string, nullable: true }
+        my_unread_count: { type: integer }
+    Message:
+      type: object
+      properties:
+        message_id: { type: integer }
+        conversation_id: { type: integer }
+        sender_profile_id: { type: integer }
+        sender_nickname: { type: string, nullable: true }
+        text: { type: string }
+        timestamp: { type: string, format: date-time, nullable: true }
+    PredefinedBug:
+      type: object
+      properties:
+        bug_id: { type: integer }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        bug_type: { type: string }
+        severity: { type: string }
+        points: { type: integer }
+        is_active: { type: boolean }
+    PredefinedBugSummary:
+      type: object
+      properties:
+        bug_id: { type: integer }
+        title: { type: string }
+        type: { type: string }
+        severity: { type: string }
+        points: { type: integer }
+
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: "API ключ пользователя, полученный после логина. Передавать в заголовке 'Authorization: <Your-API-Key>' (без префикса 'Bearer ')."
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      required: false
+      description: Номер страницы для пагинации (начиная с 1).
+      schema: { type: integer, default: 1, minimum: 1 }
+    PerPageParam:
+      name: per_page
+      in: query
+      required: false
+      description: Количество элементов на странице.
+      schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+    ProfileIdParam:
+      name: profile_id
+      in: path
+      required: true
+      description: ID профиля тестировщика.
+      schema: { type: integer }
+    WalletIdParam:
+      name: wallet_id
+      in: path
+      required: true
+      description: ID кошелька.
+      schema: { type: integer }
+    WishIdParam:
+      name: wish_id
+      in: path
+      required: true
+      description: ID желания (wishlist item).
+      schema: { type: integer }
+    InteractionRequestIdParam:
+      name: request_id
+      in: path
+      required: true
+      description: ID запроса на взаимодействие (InteractionRequest).
+      schema: { type: integer }
+
+  responses:
+    UnauthorizedError:
+      description: Ошибка аутентификации (неверный или отсутствующий API ключ).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ForbiddenError:
+      description: Доступ запрещен (нет прав на выполнение действия с этим ресурсом).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    BadRequest:
+      description: Некорректный запрос (ошибка валидации данных, неверный формат и т.д.).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    InternalServerError:
+      description: Внутренняя ошибка сервера.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFoundProfile:
+      description: Профиль с указанным ID не найден (или пользователь, если применимо).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFoundWish:
+      description: Желание с указанным ID не найдено.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ActionSuccessResponse:
+      description: Действие успешно выполнено.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message: { type: string }
+              tester_profile: { $ref: '#/components/schemas/TesterProfile' }
+    BadRequestAction:
+       description: Невозможно выполнить действие (например, профиль неактивен).
+       content:
+         application/json:
+           schema: { $ref: '#/components/schemas/ErrorResponse' }
